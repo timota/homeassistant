@@ -1,0 +1,97 @@
+blueprint:
+  name: Ikea on/off button (E1743) cover control
+  description: Control cover with IKEA Tradfri ON/OFF button (E1743).
+  domain: automation
+  input:
+    button:
+      name: button
+      description: Ikea ON/OFF Button (E1743)
+      selector:
+        entity:
+          domain:
+          - sensor
+          multiple: false
+    cover:
+      name: Cover
+      description: Controlled Cover
+      selector:
+        target:
+          entity:
+          - domain:
+            - cover
+    cover_run_sensor:
+      name: Cover run sensor
+      description: Sensor that indicates if cover is currently running
+      selector:
+        entity:
+          domain:
+          - binary_sensor
+          multiple: false
+  source_url: https://github.com/timota/homeassistant/blob/main/blueprints/automation/Cover/ikea-on-off-button-e1743-to-control-covers-blinds.yaml
+
+mode: restart
+max_exceeded: silent
+
+trigger:
+- platform: state
+  entity_id: !input button
+  attribute: action
+
+variables:
+  command: '{{ trigger.to_state.state }}'
+
+action:
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ command == 'off' }}"
+        sequence:
+          - if:
+              - condition: state
+                entity_id: !input cover_run_sensor
+                state: "off"
+            then:
+              - service: cover.close_cover
+                target: !input cover
+                data: {}
+            else:
+              - service: cover.stop_cover
+                target: !input cover
+                data: {}
+      - conditions:
+          - condition: template
+            value_template: "{{ command == 'on' }}"
+        sequence:
+          - if:
+              - condition: state
+                entity_id: !input cover_run_sensor
+                state: "off"
+            then:
+              - service: cover.open_cover
+                target: !input cover
+                data: {}
+            else:
+              - service: cover.stop_cover
+                target: !input cover
+                data: {}
+      - conditions:
+          - condition: template
+            value_template: "{{ command == 'brightness_move_down' }}"
+        sequence:
+          - service: cover.close_cover
+            target: !input cover
+            data: {}
+      - conditions:
+          - condition: template
+            value_template: "{{ command == 'brightness_move_up' }}"
+        sequence:
+          - service: cover.open_cover
+            target: !input cover
+            data: {}
+      - conditions:
+          - condition: template
+            value_template: "{{ command == 'brightness_stop' }}"
+        sequence:
+          - service: cover.stop_cover
+            target: !input cover
+            data: {}
