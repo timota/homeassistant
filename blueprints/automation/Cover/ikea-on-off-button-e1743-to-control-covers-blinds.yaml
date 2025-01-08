@@ -1,16 +1,21 @@
 blueprint:
   name: Ikea on/off button (E1743) cover control
-  description: Control cover with IKEA Tradfri ON/OFF button (E1743).
+  description: Control covers with IKEA Tradfri ON/OFF button (E1743).
   domain: automation
   input:
     button:
       name: button
       description: Ikea ON/OFF Button (E1743)
       selector:
-        entity:
-          domain:
-          - sensor
-          multiple: false
+        device:
+          filter:
+          - integration: mqtt
+            manufacturer: IKEA
+            model: TRADFRI on/off switch
+          #**For backwards compatability with z2m 1.x. model_id is added to end of model rather than a seperate attribute in z2m 2.x
+          - integration: mqtt
+            manufacturer: IKEA
+            model: TRADFRI on/off switch (E1743)
     cover:
       name: Cover
       description: Controlled Cover
@@ -19,79 +24,73 @@ blueprint:
           entity:
           - domain:
             - cover
-    cover_run_sensor:
-      name: Cover run sensor
-      description: Sensor that indicates if cover is currently running
-      selector:
-        entity:
-          domain:
-          - binary_sensor
-          multiple: false
-  source_url: https://github.com/timota/homeassistant/blob/main/blueprints/automation/Cover/ikea-on-off-button-e1743-to-control-covers-blinds.yaml
-
+  source_url: https://community.home-assistant.io/t/ikea-on-off-button-e1743-to-control-covers-blinds/286307
 mode: restart
 max_exceeded: silent
-
 trigger:
-- platform: state
-  entity_id: !input button
-  attribute: action
+- id: button_up
+  domain: mqtt
+  device_id: !input button
+  type: action
+  subtype: "on"
+  trigger: device
+- id: button_down
+  domain: mqtt
+  device_id: !input button
+  type: action
+  subtype: "off"
+  trigger: device
+- id: button_long_up
+  domain: mqtt
+  device_id: !input button
+  type: action
+  subtype: "brightness_move_up"
+  trigger: device
+- id: button_long_down
+  domain: mqtt
+  device_id: !input button
+  type: action
+  subtype: "brightness_move_down"
+  trigger: device
+- id: button_stop
+  domain: mqtt
+  device_id: !input button
+  type: action
+  subtype: "brightness_stop"
+  trigger: device
 
 variables:
-  command: '{{ trigger.to_state.state }}'
+  command: '{{ trigger.id }}'
 
 action:
-  - choose:
-      - conditions:
-          - condition: template
-            value_template: "{{ command == 'off' }}"
-        sequence:
-          - if:
-              - condition: state
-                entity_id: !input cover_run_sensor
-                state: "off"
-            then:
-              - service: cover.close_cover
-                target: !input cover
-                data: {}
-            else:
-              - service: cover.stop_cover
-                target: !input cover
-                data: {}
-      - conditions:
-          - condition: template
-            value_template: "{{ command == 'on' }}"
-        sequence:
-          - if:
-              - condition: state
-                entity_id: !input cover_run_sensor
-                state: "off"
-            then:
-              - service: cover.open_cover
-                target: !input cover
-                data: {}
-            else:
-              - service: cover.stop_cover
-                target: !input cover
-                data: {}
-      - conditions:
-          - condition: template
-            value_template: "{{ command == 'brightness_move_down' }}"
-        sequence:
-          - service: cover.close_cover
-            target: !input cover
-            data: {}
-      - conditions:
-          - condition: template
-            value_template: "{{ command == 'brightness_move_up' }}"
-        sequence:
-          - service: cover.open_cover
-            target: !input cover
-            data: {}
-      - conditions:
-          - condition: template
-            value_template: "{{ command == 'brightness_stop' }}"
-        sequence:
-          - service: cover.stop_cover
-            target: !input cover
-            data: {}
+- choose:
+  - conditions:
+    - "{{ command == 'button_down' }}"
+    sequence:
+    - service: cover.close_cover
+      target: !input cover
+      data: {}
+  - conditions:
+    - "{{ command == 'button_up' }}"
+    sequence:
+    - service: cover.open_cover
+      data: {}
+      target: !input cover
+  - conditions:
+    - "{{ command == 'button_long_down' }}"
+    sequence:
+    - service: cover.close_cover
+      data: {}
+      target: !input cover
+  - conditions:
+    - "{{ command == 'button_long_up' }}"
+    sequence:
+    - service: cover.open_cover
+      data: {}
+      target: !input cover
+  - conditions:
+    - "{{ command == 'button_stop' }}"
+    sequence:
+    - service: cover.stop_cover
+      data: {}
+      target: !input cover
