@@ -9,6 +9,7 @@ blueprint:
 
     <details>
     <summary><b>Notes:</b> 👈</summary>
+
       - Climate devices, such as heating, turn off when a window is opened and revert to their previous state once the window is closed. 
         You can also set a delay before the climate device returns to its previous state.
 
@@ -18,6 +19,7 @@ blueprint:
     </details>
 
     Required = *
+    
   domain: automation
   input:
     trigger:
