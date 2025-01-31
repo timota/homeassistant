@@ -8,17 +8,17 @@ blueprint:
     Tado Open Window Detection uses sensors to detect open windows or doors and temporarily turns off heating or cooling to save energy.
 
     <details>
-    <summary><b>Notes:</b> 👈</summary>
-
+    <summary><b>Summary:</b> 👈</summary>
 
       - Climate devices, such as heating, turn off when a window is opened and revert to their previous state once the window is closed. 
-        You can also set a delay before the climate device returns to its previous state.
+        
+      - You can set a delay before the climate device returns to its previous state.
 
       - The supported HVAC modes are: auto, heat, and off.
 
       - For this automation to function, a mandatory text helper is required to store the current climate state, including mode and target temperature.
 
-      
+
     </details>
 
     Required = *
