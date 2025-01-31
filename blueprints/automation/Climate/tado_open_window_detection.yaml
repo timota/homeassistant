@@ -1,0 +1,168 @@
+blueprint:
+  name: Tado open window detection
+  description: >
+    # Tado open window detection
+
+    **Version: 1**
+
+    Tado Open Window Detection uses sensors to detect open windows or doors and temporarily turns off heating or cooling to save energy.
+
+    <details>
+    <summary><b>Notes:</b> 👈</summary>
+      - Climate devices, such as heating, turn off when a window is opened and revert to their previous state once the window is closed. 
+        You can also set a delay before the climate device returns to its previous state.
+
+      - The supported HVAC modes are: auto, heat, and off.
+
+      - For this automation to function, a mandatory text helper is required to store the current climate state, including mode and target temperature.
+    </details>
+
+    Required = *
+  domain: automation
+  input:
+    trigger:
+      name: "Trigger *"
+      icon: mdi:cog-outline
+      collapsed: true
+      input:
+        door_window_trigger:
+          name: Trigger Sensor - Window Sensors
+          description: >
+            The window sensor that controls the climate entity. If you have more window sensors please make a group sensor.
+          default: ""
+          selector:
+            entity:
+              filter:
+                domain:
+                  - binary_sensor
+                  - input_boolean
+              multiple: false
+    thermostat:
+      name: "Thermostat *"
+      icon: mdi:thermostat-cog
+      collapsed: true
+      input:
+        climate_device:
+          name: Climate device
+          description: >
+            The climate entity that is controlled by the window sensor.
+          default: ""
+          selector:
+            entity:
+              filter:
+                domain:
+                  - climate
+              multiple: false
+    helper:
+      name: "Configuration"
+      icon: mdi:cog-outline
+      collapsed: true
+      input:
+        helper_climate_state:
+          name: "(Required) Helper - Climate state *"
+          description: >
+            Input Text used to store the last thermostate state: mode and target temperature. 
+
+            You will need to manually create a text input entity for this, please read the blueprint Additional Notes for more info.
+          default: ""
+          selector:
+            entity:
+              filter:
+                domain:
+                  - input_text
+              multiple: false
+        minimum_open_time:
+          name: Miniumum open time
+          description: Time in seconds to wait until the automation is triggered
+          default: 12
+          selector:
+            number:
+              min: 0.0
+              max: 120.0
+              unit_of_measurement: seconds
+              mode: slider
+              step: 1.0
+        minimum_close_time:
+          name: Miniumum close time
+          description: Time in seconds to wait until the climate entity is turned on again
+          default: 12
+          selector:
+            number:
+              min: 0.0
+              max: 300.0
+              unit_of_measurement: seconds
+              mode: slider
+              step: 1.0
+
+variables:
+  helper_climate_state: !input helper_climate_state
+  climate_device: !input climate_device
+
+mode: single
+
+triggers:
+  - trigger: state
+    id: "t0_on"
+    entity_id: !input door_window_trigger
+    from: "off"
+    to: "on"
+    for: !input minimum_open_time
+  - trigger: state
+    id: "t0_off"
+    entity_id: !input door_window_trigger
+    from: "on"
+    to: "off"
+    for: !input minimum_close_time
+
+conditions: []
+actions:
+  - choose:
+      - alias: "On trigger"
+        conditions:
+          - condition: trigger
+            id: "t0_on"
+        sequence:
+          - alias: "Record mode and temp no matter what, later we will use one or both depends on state"
+            action: input_text.set_value
+            data:
+              entity_id: "{{ helper_climate_state }}"
+              value: >-
+                {{ {"cm": states(climate_device),"ct": state_attr(climate_device, 'temperature'),"t":as_timestamp(now()) } | to_json }}
+
+          - choose:
+              - alias: "Climate mode other than Off"
+                conditions:
+                  - '{{ not is_state(climate_device, "off") }}'
+                sequence:
+                  - alias: "Turn off climate"
+                    action: climate.set_hvac_mode
+                    target:
+                      entity_id: "{{ climate_device }}"
+                    data:
+                      hvac_mode: "off"
+
+      - alias: "Off trigger"
+        conditions:
+          - condition: trigger
+            id: "t0_off"
+          - '{{ is_state(climate_device, "off") }}'
+        sequence:
+          - variables:
+              climate_mode: "{{ (states(helper_climate_state) | from_json).cm }}"
+              climate_temp: "{{ (states(helper_climate_state) | from_json).ct | float }}"
+
+          - alias: "If saved climate mode is off - do nothing"
+            if:
+              - condition: template
+                value_template: "{{ climate_mode != 'off' }}"
+            then:
+              - alias: "Swith On climate device"
+                action: climate.set_temperature
+                target:
+                  entity_id: "{{ climate_device }}"
+                data: >
+                  {% if climate_mode != 'heat' %}
+                    { "hvac_mode": "{{climate_mode}}" }
+                  {% else %}
+                    { "hvac_mode": "{{climate_mode}}", "temperature": {{climate_temp}} }
+                  {% endif %}
