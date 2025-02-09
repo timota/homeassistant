@@ -3,7 +3,7 @@ blueprint:
   description: >
     # Tado open window detection
 
-    **Version: 1.1.1**
+    **Version: 1.2.0**
 
 
     Tado Open Window Detection uses sensors to detect open windows or doors and temporarily turns off heating or cooling to save energy.
@@ -22,7 +22,26 @@ blueprint:
 
 
     </details>
+    </br>
+    <details>
+    <summary><b>Changelog:</b> 👈</summary>
 
+      - **Version: 1.2.0** - change automation mode from single to queued to prevent missing actions. Used to cover edge cases. 
+      - **Version: 1.1.1** - Initial release
+
+    </details>
+    </br>
+    <details>
+    <summary><b>ToDo:</b> 👈</summary>
+
+      - Fix edge case with minimum_close_time/open_time. When window opened/closed and immidietly opened/closed again (minimum_x_time not passed) - old saved record used. 
+        Example: 
+          - window opened, state record saved, climate off. 
+          - window closes and immediately opens again. 
+          - Close action not triggered, as minimum_x_time not passed.
+          - Open action triggered as minimum_x_time passed and rewrite current saved record with incorrect state, eg: off
+
+    </details>
 
     Required = *
 
@@ -85,7 +104,7 @@ blueprint:
         minimum_open_time:
           name: Miniumum open time
           description: Time in seconds to wait until the automation is triggered
-          default: 12
+          default: 15
           selector:
             number:
               min: 0.0
@@ -96,7 +115,7 @@ blueprint:
         minimum_close_time:
           name: Miniumum close time
           description: Time in seconds to wait until the climate entity is turned on again
-          default: 12
+          default: 1
           selector:
             number:
               min: 0.0
@@ -104,12 +123,24 @@ blueprint:
               unit_of_measurement: seconds
               mode: slider
               step: 1.0
+        automation_mode:
+          name: Automation mode
+          description: The automation’s mode configuration option controls what happens when the automation is triggered while the actions are still running from a previous trigger.
+          default: queued
+          selector:
+            select:
+              mode: list
+              options:
+                - label: Queued
+                  value: queued
+                - label: Single
+                  value: single
 
 variables:
   helper_climate_state: !input helper_climate_state
   climate_device: !input climate_device
 
-mode: single
+mode: !input automation_mode
 
 triggers:
   - trigger: state
