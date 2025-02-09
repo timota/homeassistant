@@ -36,9 +36,9 @@ blueprint:
 
       - Fix edge case with minimum_close_time/open_time. When window opened/closed and immidietly opened/closed again (minimum_x_time not passed) - old saved record used. 
         Example: 
-          - window opens, state record saved, climate off. 
-          - window closed and immidietly opens again. 
-          - Closed action not triggered, as minimum_x_time not passed.
+          - window opened, state record saved, climate off. 
+          - window closes and immediately opens again. 
+          - Close action not triggered, as minimum_x_time not passed.
           - Open action triggered as minimum_x_time passed and rewrite current saved record with incorrect state, eg: off
 
     </details>
