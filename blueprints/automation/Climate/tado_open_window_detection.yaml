@@ -3,7 +3,7 @@ blueprint:
   description: >
     # Tado open window detection
 
-    **Version: 1.2.0**
+    **Version: 1.3.0**
 
 
     Tado Open Window Detection uses sensors to detect open windows or doors and temporarily turns off heating or cooling to save energy.
@@ -20,26 +20,33 @@ blueprint:
 
       - For this automation to function, a mandatory text helper is required to store the current climate state, including mode and target temperature.
 
+      - Support window/door open/close debounce interval equal minimum open/close time to prevent false operations(more info in Notes below)  
 
     </details>
     </br>
     <details>
     <summary><b>Changelog:</b> 👈</summary>
 
+      - **Version: 1.3.0** - Introduce new debounce feature. Use single mode by default. 
       - **Version: 1.2.0** - change automation mode from single to queued to prevent missing actions. Used to cover edge cases. 
       - **Version: 1.1.1** - Initial release
 
     </details>
     </br>
     <details>
-    <summary><b>ToDo:</b> 👈</summary>
+    <summary><b>Notes:</b> 👈</summary>
 
-      - Fix edge case with minimum_close_time/open_time. When window opened/closed and immidietly opened/closed again (minimum_x_time not passed) - old saved record used. 
+      - [Fixed] - Edge case with minimum_close_time/open_time. 
+        When window opened/closed and immidietly opened/closed again (minimum_x_time not passed) - old saved record restored. 
         Example: 
           - window opened, state record saved, climate off. 
           - window closes and immediately opens again. 
           - Close action not triggered, as minimum_x_time not passed.
           - Open action triggered as minimum_x_time passed and rewrite current saved record with incorrect state, eg: off
+
+      - [Not confirmed] - Possible issue with incorrect debounce handling when debounce intervals are different for open and close minimum times. 
+
+      - [ToDo:{2}] - possible option to restore saved state in case of any changes made during normal operation, eg: mode/temp changed by external process after window was opened.
 
     </details>
 
@@ -104,18 +111,18 @@ blueprint:
         minimum_open_time:
           name: Miniumum open time
           description: Time in seconds to wait until the automation is triggered
-          default: 15
+          default: 12
           selector:
             number:
               min: 0.0
-              max: 120.0
+              max: 300.0
               unit_of_measurement: seconds
               mode: slider
               step: 1.0
         minimum_close_time:
           name: Miniumum close time
           description: Time in seconds to wait until the climate entity is turned on again
-          default: 1
+          default: 12
           selector:
             number:
               min: 0.0
@@ -126,7 +133,7 @@ blueprint:
         automation_mode:
           name: Automation mode
           description: The automation’s mode configuration option controls what happens when the automation is triggered while the actions are still running from a previous trigger.
-          default: queued
+          default: single
           selector:
             select:
               mode: list
@@ -139,6 +146,8 @@ blueprint:
 variables:
   helper_climate_state: !input helper_climate_state
   climate_device: !input climate_device
+  minimum_open_time: !input minimum_open_time
+  minimum_close_time: !input minimum_close_time
 
 mode: !input automation_mode
 
@@ -156,49 +165,70 @@ triggers:
     to: "off"
     for: !input minimum_close_time
 
-conditions: []
+conditions:
+  - condition: or
+    conditions:
+      - condition: and
+        conditions:
+          - condition: trigger
+            id: t0_on
+          - condition: template
+            value_template: >-
+              {{ (as_timestamp(trigger.to_state.last_changed) -
+              as_timestamp(trigger.from_state.last_changed)) > minimum_close_time }}
+      - condition: and
+        conditions:
+          - condition: trigger
+            id: t0_off
+          - condition: template
+            value_template: >-
+              {{ (as_timestamp(trigger.to_state.last_changed) -
+              as_timestamp(trigger.from_state.last_changed)) > minimum_open_time }}
 actions:
   - choose:
-      - alias: "On trigger"
+      - alias: "Window opened"
         conditions:
           - condition: trigger
             id: "t0_on"
         sequence:
-          - alias: "Record mode and temp no matter what, later we will use one or both depends on state"
+          - alias: "Save climate_device state into helper"
             action: input_text.set_value
             data:
               entity_id: "{{ helper_climate_state }}"
               value: >-
-                {{ {"cm": states(climate_device),"ct": state_attr(climate_device, 'temperature'),"t":as_timestamp(now()) } | to_json }}
+                {{ {"s": states(climate_device),"tt": state_attr(climate_device,'temperature'),"t":as_timestamp(now()) } | to_json }}
 
-          - choose:
-              - alias: "Climate mode other than Off"
-                conditions:
-                  - '{{ not is_state(climate_device, "off") }}'
-                sequence:
-                  - alias: "Turn off climate"
-                    action: climate.set_hvac_mode
-                    target:
-                      entity_id: "{{ climate_device }}"
-                    data:
-                      hvac_mode: "off"
+          - alias: Climate mode other than Off
+            if:
+              - condition: template
+                value_template: >-
+                  {{ not is_state(climate_device, "off") }}
+            then:
+              - alias: "Switch off climate"
+                action: climate.set_hvac_mode
+                target:
+                  entity_id: "{{ climate_device }}"
+                data:
+                  hvac_mode: "off"
 
-      - alias: "Off trigger"
+      - alias: "Window closed"
         conditions:
           - condition: trigger
             id: "t0_off"
           - '{{ is_state(climate_device, "off") }}'
         sequence:
-          - variables:
-              climate_mode: "{{ (states(helper_climate_state) | from_json).cm }}"
-              climate_temp: "{{ (states(helper_climate_state) | from_json).ct | float }}"
+          - alias: Load climate_device state and temp from helper
+            variables:
+              climate_mode: "{{ (states(helper_climate_state) | from_json).s }}"
+              climate_temp: "{{ (states(helper_climate_state) | from_json).tt | float }}"
 
+          # ToDo:{2}: possible option to restore saved state in case of any changes made during normal operation, eg: mode/temp changed when window was opened.
           - alias: "If saved climate mode is off - do nothing"
             if:
               - condition: template
                 value_template: "{{ climate_mode != 'off' }}"
             then:
-              - alias: "Swith On climate device"
+              - alias: "Restore climate device state"
                 action: >
                   {% if climate_mode != 'heat' %}
                     climate.set_hvac_mode
